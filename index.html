@@ -1,338 +1,803 @@
 <!DOCTYPE html>
-<html lang="bn">
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title> Image Converter </title>
-    <!-- আপনার ওয়েবসাইটের লোগো বা ফ্যাভিকন এখানে সেট করুন -->
-    <link rel="icon" type="image/png" href="logo/abbu_logo.png">
-    
-    <!-- jsPDF Library for PDF generation -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Universal Image Converter</title>
 
-    <style>
-        body {
-            font-family: 'Segoe UI', Arial, sans-serif;
-            background: #0f172a;
-            color: white;
-            text-align: center;
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 850px;
-            margin: auto;
-            background: #1e293b;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.4);
-        }
-
-        .drop-area {
-            border: 3px dashed #38bdf8;
-            padding: 50px;
-            border-radius: 12px;
-            cursor: pointer;
-            margin-bottom: 20px;
-            background: #334155;
-            transition: 0.3s;
-        }
-
-        .drop-area.active {
-            border-color: #22c55e;
-            background: rgba(34, 197, 94, 0.1);
-        }
-
-        .controls {
-            margin: 20px 0;
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-
-        input[type="number"], select {
-            padding: 12px;
-            border-radius: 6px;
-            border: 1px solid #475569;
-            background: #0f172a;
-            color: white;
-            font-size: 14px;
-        }
-
-        button {
-            padding: 12px 25px;
-            border: none;
-            background: #22c55e;
-            color: white;
-            border-radius: 6px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: 0.2s;
-            margin: 5px;
-        }
-
-        button:hover { background: #16a34a; }
-        .download-btn { background: #38bdf8; }
-        .download-btn:hover { background: #0284c7; }
-        
-        .pdf-btn { background: #e11d48; }
-        .pdf-btn:hover { background: #be123c; }
-
-        .toggle-btn { background: #64748b; }
-        .toggle-btn.on { background: #f59e0b; color: #000; }
-
-        .preview-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-            gap: 15px;
-            margin-top: 30px;
-        }
-
-        .preview-item {
-            background: #0f172a;
-            padding: 10px;
-            border-radius: 8px;
-            border: 1px solid #38bdf8;
-            position: relative;
-        }
-
-        .preview-item img {
-            width: 100%;
-            height: 110px;
-            object-fit: cover;
-            border-radius: 4px;
-        }
-
-        .download-link {
-            display: block;
-            margin-top: 10px;
-            color: #38bdf8;
-            text-decoration: none;
-            font-size: 12px;
-            font-weight: bold;
-        }
-
-        #fileInput { display: none; }
-    </style>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/heic2any/dist/heic2any.min.js"></script>
 </head>
+<body class="bg-slate-950">
+<div id="root"></div>
 
-<body>
+<script type="text/babel">
+const {useState} = React;
 
-<div class="container">
-    <h2> Image Converter</h2>
-    
-    <div class="drop-area" id="dropArea">
-        <p id="dropText">এখানে ছবি ড্র্যাগ করুন অথবা ক্লিক করে আপলোড করুন</p>
-        <input type="file" id="fileInput" multiple accept="image/*">
+function App(){
+  const [files,setFiles]=useState([]);
+  const [format,setFormat]=useState("image/png");
+  const [quality,setQuality]=useState(95);
+  const [width,setWidth]=useState("");
+  const [height,setHeight]=useState("");
+  const [results,setResults]=useState([]);
+
+  async function normalize(file){
+    const n=file.name.toLowerCase();
+    if(n.endsWith(".heic")||n.endsWith(".heif")){
+      const blob=await heic2any({blob:file,toType:"image/png"});
+      return new File([blob],file.name.replace(/\.(heic|heif)$/i,'.png'),{type:'image/png'});
+    }
+    return file;
+  }
+
+  async function addFiles(list){
+    const arr=[];
+    for(const f of Array.from(list)){ arr.push(await normalize(f)); }
+    setFiles(v=>[...v,...arr]);
+  }
+
+  async function convert(){
+    const out=[];
+    for(const file of files){
+      const data=await new Promise((resolve)=>{
+        const fr=new FileReader();
+        fr.onload=e=>resolve(e.target.result);
+        fr.readAsDataURL(file);
+      });
+
+      const img=await new Promise((resolve)=>{
+        const i=new Image();
+        i.onload=()=>resolve(i);
+        i.src=data;
+      });
+
+      const canvas=document.createElement("canvas");
+      canvas.width=Number(width)||img.width;
+      canvas.height=Number(height)||img.height;
+
+      const ctx=canvas.getContext("2d");
+      ctx.imageSmoothingEnabled=true;
+      ctx.imageSmoothingQuality="high";
+      ctx.drawImage(img,0,0,canvas.width,canvas.height);
+
+      const url=canvas.toDataURL(format,quality/100);
+
+      const ext=(format.split("/")[1]||"png").replace("jpeg","jpg");
+      const name=(file.name.split(".").slice(0,-1).join(".")||"image")+"."+ext;
+
+      out.push({name,url});
+    }
+    setResults(out);
+  }
+
+  async function downloadZip(){
+    if(!results.length) return;
+    const zip=new JSZip();
+
+    for(const item of results){
+      const b=await fetch(item.url).then(r=>r.blob());
+      zip.file(item.name,b);
+    }
+
+    const content=await zip.generateAsync({type:"blob"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(content);
+    a.download="converted_images.zip";
+    a.click();
+  }
+
+  async function pdf(){
+    if(!results.length) return;
+    const {jsPDF}=window.jspdf;
+    const doc=new jsPDF();
+
+    for(let i=0;i<results.length;i++){
+      if(i) doc.addPage();
+      doc.addImage(results[i].url,"JPEG",10,10,180,180);
+    }
+    doc.save("images.pdf");
+  }
+
+  return (
+    <div className="max-w-6xl mx-auto p-6 text-white">
+      <h1 className="text-4xl font-bold mb-6">Universal Image Converter</h1>
+
+      <div className="bg-slate-900 rounded-xl p-5 space-y-4">
+        <input
+          type="file"
+          multiple
+          accept="image/*,.heic,.heif"
+          onChange={e=>addFiles(e.target.files)}
+          className="block w-full"
+        />
+
+        <div className="grid md:grid-cols-4 gap-3">
+          <select
+            value={format}
+            onChange={e=>setFormat(e.target.value)}
+            className="bg-slate-800 p-2 rounded"
+          >
+            <option value="image/png">PNG (Default)</option>
+            <option value="image/jpeg">JPG</option>
+            <option value="image/webp">WEBP</option>
+            <option value="image/avif">AVIF</option>
+            <option value="image/bmp">BMP</option>
+          </select>
+
+          <input placeholder="Width"
+            value={width}
+            onChange={e=>setWidth(e.target.value)}
+            className="bg-slate-800 p-2 rounded" />
+
+          <input placeholder="Height"
+            value={height}
+            onChange={e=>setHeight(e.target.value)}
+            className="bg-slate-800 p-2 rounded" />
+
+          <input type="range"
+            min="10"
+            max="100"
+            value={quality}
+            onChange={e=>setQuality(e.target.value)} />
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          <button onClick={convert} className="bg-emerald-600 px-4 py-2 rounded">
+            Convert
+          </button>
+
+          <button onClick={downloadZip} className="bg-sky-600 px-4 py-2 rounded">
+            Download ZIP
+          </button>
+
+          <button onClick={pdf} className="bg-rose-600 px-4 py-2 rounded">
+            Export PDF
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
+        {results.map((r,i)=>(
+          <div key={i} className="bg-slate-900 p-3 rounded-xl">
+            <img src={r.url} className="w-full h-40 object-cover rounded"/>
+            <a href={r.url} download={r.name}
+               className="block mt-2 text-sky-400 break-all">
+              {r.name}
+            </a>
+          </div>
+        ))}
+      </div>
     </div>
+  );
+}
 
-    <div class="controls">
-        <input type="number" id="width" placeholder="Width (ঐচ্ছিক)">
-        <input type="number" id="height" placeholder="Height (ঐচ্ছিক)">
-        
-        <select id="format">
-            <optgroup label="জনপ্রিয় ফরম্যাট⬇️ ">
-                <option value="image/png">PNG ফরম্যাট</option>
-                <option value="image/jpeg">JPG / JPEG ফরম্যাট</option>
-                <option value="image/webp">WebP ফরম্যাট</option>
-            </optgroup>
-            <optgroup label="অন্যান্য ফরম্যাট ⬇️">
-                <option value="image/avif">AVIF ফরম্যাট</option>
-                <option value="image/bmp">BMP ফরম্যাট</option>
-                <option value="image/gif">GIF ফরম্যাট</option>
-                <option value="image/x-icon">ICO ফরম্যাট</option>
-                <option value="image/tiff">TIFF ফরম্যাট</option>
-            </optgroup>
-        </select>
-    </div>
-
-    <button onclick="convertImages()">Convert</button>
-    <button class="download-btn" onclick="downloadAllImages()">Download All</button>
-    <button class="pdf-btn" onclick="convertToPDF()">Save as PDF</button>
-    <button id="qualityToggle" class="toggle-btn" onclick="toggleQuality()">Quality Boost: OFF</button>
-
-    <div class="preview-container" id="previewContainer"></div>
-</div>
-
-<script>
-    const dropArea = document.getElementById('dropArea');
-    const fileInput = document.getElementById('fileInput');
-    const previewContainer = document.getElementById('previewContainer');
-    const qualityToggle = document.getElementById('qualityToggle');
-    
-    let selectedFiles = [];
-    let convertedResults = [];
-    let isQualityBoosted = false;
-
-    function toggleQuality() {
-        isQualityBoosted = !isQualityBoosted;
-        qualityToggle.innerText = isQualityBoosted ? "Quality Boost: ON" : "Quality Boost: OFF";
-        qualityToggle.classList.toggle('on', isQualityBoosted);
-    }
-
-    dropArea.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
-
-    dropArea.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        dropArea.classList.add('active');
-    });
-
-    dropArea.addEventListener('dragleave', () => dropArea.classList.remove('active'));
-
-    dropArea.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropArea.classList.remove('active');
-        handleFiles(e.dataTransfer.files);
-    });
-
-    function handleFiles(files) {
-        const fileList = Array.from(files);
-        selectedFiles = [...selectedFiles, ...fileList];
-        renderInitialPreview(fileList);
-    }
-
-    function renderInitialPreview(files) {
-        files.forEach(file => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = (e) => {
-                const div = document.createElement('div');
-                div.className = 'preview-item';
-                div.innerHTML = `<img src="${e.target.result}"><p style="font-size:10px; margin:5px 0; overflow:hidden;">${file.name}</p>`;
-                previewContainer.appendChild(div);
-            };
-        });
-    }
-
-    function convertImages() {
-        if (selectedFiles.length === 0) {
-            alert("দয়া করে আগে ছবি আপলোড করুন!");
-            return;
-        }
-
-        convertedResults = [];
-        previewContainer.innerHTML = "<h3>প্রসেসিং হচ্ছে...</h3>";
-        
-        const targetFormat = document.getElementById('format').value;
-        const targetWidth = parseInt(document.getElementById('width').value);
-        const targetHeight = parseInt(document.getElementById('height').value);
-        
-        let ext = targetFormat.split('/')[1].replace('jpeg', 'jpg').replace('x-icon', 'ico').replace('tiff', 'tif');
-
-        let processedCount = 0;
-
-        selectedFiles.forEach((file) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = (event) => {
-                const img = new Image();
-                img.src = event.target.result;
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-
-                    canvas.width = targetWidth || img.width;
-                    canvas.height = targetHeight || img.height;
-
-                    if (isQualityBoosted) {
-                        ctx.imageSmoothingEnabled = true;
-                        ctx.imageSmoothingQuality = 'high';
-                    }
-
-                    if (targetFormat === "image/jpeg" || targetFormat === "image/bmp") {
-                        ctx.fillStyle = "#ffffff";
-                        ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    }
-
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-                    const qualityValue = isQualityBoosted ? 1.0 : 0.9;
-                    const dataURL = canvas.toDataURL(targetFormat, qualityValue);
-                    
-                    // মূল নাম সংরক্ষণ করা হচ্ছে (এক্সটেনশন বাদে)
-                    const originalName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
-                    const fileName = `${originalName}.${ext}`;
-                    
-                    convertedResults.push({ 
-                        data: dataURL, 
-                        name: fileName, 
-                        width: canvas.width, 
-                        height: canvas.height 
-                    });
-
-                    processedCount++;
-                    if (processedCount === selectedFiles.length) {
-                        displayConvertedImages(ext);
-                    }
-                };
-            };
-        });
-    }
-
-    function displayConvertedImages(ext) {
-        previewContainer.innerHTML = ""; 
-        convertedResults.forEach(item => {
-            const div = document.createElement('div');
-            div.className = 'preview-item';
-            div.innerHTML = `
-                <img src="${item.data}" style="${isQualityBoosted ? 'image-rendering: auto;' : 'image-rendering: pixelated;'}">
-                <p style="font-size:10px; margin:5px 0; overflow:hidden;">${item.name}</p>
-                <a href="${item.data}" download="${item.name}" class="download-link"> Download ${ext.toUpperCase()}</a>
-            `;
-            previewContainer.appendChild(div);
-        });
-    }
-
-    function downloadAllImages() {
-        if (convertedResults.length === 0) {
-            alert("আগে ছবি কনভার্ট করুন!");
-            return;
-        }
-
-        convertedResults.forEach((item, index) => {
-            setTimeout(() => {
-                const link = document.createElement("a");
-                link.href = item.data;
-                link.download = item.name;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-            }, index * 300); 
-        });
-    }
-
-    async function convertToPDF() {
-        if (convertedResults.length === 0) {
-            alert("প্রথমে ছবিগুলো কনভার্ট করুন!");
-            return;
-        }
-
-        const { jsPDF } = window.jspdf;
-        const pdf = new jsPDF({
-            orientation: 'p',
-            unit: 'px'
-        });
-
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = pdf.internal.pageSize.getHeight();
-
-        convertedResults.forEach((item, index) => {
-            if (index > 0) pdf.addPage();
-            
-            const ratio = Math.min(pdfWidth / item.width, pdfHeight / item.height);
-            const width = item.width * ratio;
-            const height = item.height * ratio;
-            const x = (pdfWidth - width) / 2;
-            const y = (pdfHeight - height) / 2;
-
-            pdf.addImage(item.data, 'JPEG', x, y, width, height);
-        });
-
-        pdf.save("converted_images.pdf");
-    }
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
+</body>
+</html><!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Image Converter Pro</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Space Grotesk', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+      colors: {
+        brand: { 50:'#f0f9ff', 100:'#e0f2fe', 200:'#bae6fd', 300:'#7dd3fc', 400:'#38bdf8', 500:'#0ea5e9', 600:'#0284c7', 700:'#0369a1', 800:'#075985', 900:'#0c4a6e' },
+        surface: { 900:'#0a0f1e', 800:'#0f172a', 700:'#1e293b', 600:'#263044', 500:'#334155', 400:'#475569' },
+        accent: { green:'#22c55e', red:'#ef4444', amber:'#f59e0b', purple:'#a855f7' }
+      },
+      animation: {
+        'pulse-slow': 'pulse 3s ease-in-out infinite',
+        'bounce-sm': 'bounce-sm 1s ease-in-out infinite',
+        'shimmer': 'shimmer 2s linear infinite',
+        'fade-in': 'fadeIn 0.3s ease-out',
+        'slide-up': 'slideUp 0.4s ease-out',
+      },
+      keyframes: {
+        'bounce-sm': { '0%,100%': { transform:'translateY(0)' }, '50%': { transform:'translateY(-4px)' } },
+        shimmer: { '0%': { backgroundPosition:'-200% 0' }, '100%': { backgroundPosition:'200% 0' } },
+        fadeIn: { from:{ opacity:0 }, to:{ opacity:1 } },
+        slideUp: { from:{ transform:'translateY(12px)', opacity:0 }, to:{ transform:'translateY(0)', opacity:1 } },
+      }
+    }
+  }
+}
+</script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; background:#0a0f1e; font-family:'Space Grotesk',sans-serif; min-height:100vh; }
+  ::-webkit-scrollbar { width:6px; height:6px; }
+  ::-webkit-scrollbar-track { background:#1e293b; }
+  ::-webkit-scrollbar-thumb { background:#475569; border-radius:3px; }
+  .drop-glow { box-shadow: 0 0 40px rgba(14,165,233,0.15), inset 0 0 40px rgba(14,165,233,0.05); }
+  .drop-active { box-shadow: 0 0 60px rgba(34,197,94,0.25), inset 0 0 60px rgba(34,197,94,0.08); }
+  .card-glow { box-shadow: 0 4px 24px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.05); }
+  .progress-bar { background: linear-gradient(90deg, #0ea5e9, #22c55e, #a855f7, #0ea5e9); background-size:300% 100%; animation: shimmer 2s linear infinite; }
+  .format-chip { transition: all 0.15s ease; }
+  .format-chip:hover { transform: translateY(-1px); }
+  .img-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+  .img-card:hover { transform: translateY(-3px); box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(14,165,233,0.3); }
+  .btn-primary { background: linear-gradient(135deg, #0ea5e9, #0284c7); transition: all 0.2s; }
+  .btn-primary:hover { background: linear-gradient(135deg, #38bdf8, #0ea5e9); transform:translateY(-1px); box-shadow:0 6px 20px rgba(14,165,233,0.3); }
+  .btn-primary:active { transform:translateY(0); }
+  .select-styled { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 12px center; -webkit-appearance:none; appearance:none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner { animation: spin 0.8s linear infinite; }
+  .heic-badge { background: linear-gradient(135deg, #a855f7, #7c3aed); }
+  .format-section-title { letter-spacing: 0.08em; }
+  input[type=range] { -webkit-appearance:none; height:4px; background:#334155; border-radius:2px; outline:none; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:#0ea5e9; cursor:pointer; box-shadow:0 0 8px rgba(14,165,233,0.5); }
+  input[type=range]::-webkit-slider-thumb:hover { background:#38bdf8; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useCallback, useEffect } = React;
 
+const FORMAT_GROUPS = [
+  {
+    label: '⚡ Most Popular',
+    formats: [
+      { value:'image/png', ext:'png', label:'PNG', desc:'Lossless, transparency' },
+      { value:'image/jpeg', ext:'jpg', label:'JPG', desc:'Small, web-friendly' },
+      { value:'image/webp', ext:'webp', label:'WebP', desc:'Modern, best compression' },
+    ]
+  },
+  {
+    label: '📱 Mobile / Camera',
+    formats: [
+      { value:'heic', ext:'png', label:'HEIC→PNG', desc:'Apple iPhone photos', special:'heic-out' },
+      { value:'image/avif', ext:'avif', label:'AVIF', desc:'Ultra modern format' },
+    ]
+  },
+  {
+    label: '🗂 Other Formats',
+    formats: [
+      { value:'image/gif', ext:'gif', label:'GIF', desc:'Animated & legacy' },
+      { value:'image/bmp', ext:'bmp', label:'BMP', desc:'Uncompressed bitmap' },
+      { value:'image/tiff', ext:'tif', label:'TIFF', desc:'Print / archival' },
+      { value:'image/svg+xml', ext:'svg', label:'SVG', desc:'Vector (embed only)' },
+    ]
+  }
+];
+
+const ALL_FORMATS_FLAT = FORMAT_GROUPS.flatMap(g => g.formats);
+
+const ACCEPT_TYPES = 'image/*,.heic,.heif,.HEIC,.HEIF,.avif,.tiff,.tif,.bmp,.svg,.ico,.webp,.png,.jpg,.jpeg,.gif';
+
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+  return (b/1024/1024).toFixed(2) + ' MB';
+}
+
+function FileIcon({ ext }) {
+  const colors = { png:'#22c55e', jpg:'#f59e0b', jpeg:'#f59e0b', webp:'#0ea5e9', heic:'#a855f7', heif:'#a855f7', avif:'#ef4444', gif:'#ec4899', bmp:'#94a3b8', tif:'#6366f1', tiff:'#6366f1', svg:'#f97316' };
+  const col = colors[ext?.toLowerCase()] || '#64748b';
+  return (
+    <div className="w-10 h-12 rounded relative flex items-center justify-center text-xs font-mono font-bold" style={{background:`${col}22`, border:`1px solid ${col}55`, color:col}}>
+      <svg viewBox="0 0 32 40" className="absolute inset-0 w-full h-full opacity-20">
+        <path d="M4 0 L24 0 L32 8 L32 40 L4 40 Z" fill="currentColor"/>
+        <path d="M24 0 L24 8 L32 8" fill="none" stroke="currentColor" strokeWidth="1"/>
+      </svg>
+      <span className="relative z-10 text-[9px] leading-none">{(ext||'IMG').toUpperCase()}</span>
+    </div>
+  );
+}
+
+function StatusBadge({ status, progress }) {
+  if (status === 'waiting') return <span className="text-xs text-slate-500 font-mono">QUEUED</span>;
+  if (status === 'processing') return (
+    <span className="text-xs text-sky-400 font-mono flex items-center gap-1">
+      <svg className="spinner w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" strokeOpacity="0.2"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor"/></svg>
+      {progress ? `${progress}%` : 'CONVERTING'}
+    </span>
+  );
+  if (status === 'done') return <span className="text-xs text-green-400 font-mono flex items-center gap-1"><svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>DONE</span>;
+  if (status === 'error') return <span className="text-xs text-red-400 font-mono">ERROR</span>;
+  return null;
+}
+
+function App() {
+  const [files, setFiles] = useState([]);
+  const [outputFormat, setOutputFormat] = useState('image/png');
+  const [quality, setQuality] = useState(92);
+  const [width, setWidth] = useState('');
+  const [height, setHeight] = useState('');
+  const [maintainAspect, setMaintainAspect] = useState(true);
+  const [convertedItems, setConvertedItems] = useState([]);
+  const [isConverting, setIsConverting] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [overallProgress, setOverallProgress] = useState(0);
+  const [fileStatuses, setFileStatuses] = useState({});
+  const [showSettings, setShowSettings] = useState(false);
+  const dropRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const originalDimsRef = useRef({});
+
+  const selectedFormat = ALL_FORMATS_FLAT.find(f => f.value === outputFormat) || ALL_FORMATS_FLAT[0];
+
+  const handleFiles = useCallback((incoming) => {
+    const arr = Array.from(incoming).filter(f =>
+      f.type.startsWith('image/') ||
+      /\.(heic|heif|avif|tiff?|bmp|svg|ico|webp|png|jpe?g|gif)$/i.test(f.name)
+    );
+    if (!arr.length) return;
+    const newFiles = arr.map((f, i) => ({
+      id: Date.now() + i + Math.random(),
+      file: f,
+      name: f.name,
+      size: f.size,
+      ext: f.name.split('.').pop().toLowerCase(),
+      preview: null,
+    }));
+    setFiles(prev => [...prev, ...newFiles]);
+    setConvertedItems([]);
+    newFiles.forEach(nf => {
+      const isHeic = /heic|heif/i.test(nf.ext);
+      if (isHeic) {
+        if (window.heic2any) {
+          heic2any({ blob: nf.file, toType: 'image/png', quality: 0.8 }).then(blob => {
+            const url = URL.createObjectURL(blob);
+            setFiles(prev => prev.map(f => f.id === nf.id ? { ...f, preview: url } : f));
+          }).catch(() => {});
+        }
+      } else {
+        const reader = new FileReader();
+        reader.onload = e => {
+          setFiles(prev => prev.map(f => f.id === nf.id ? { ...f, preview: e.target.result } : f));
+        };
+        reader.readAsDataURL(nf.file);
+      }
+    });
+  }, []);
+
+  const onDrop = e => {
+    e.preventDefault();
+    setIsDragging(false);
+    handleFiles(e.dataTransfer.files);
+  };
+
+  const removeFile = id => {
+    setFiles(prev => prev.filter(f => f.id !== id));
+    setConvertedItems(prev => prev.filter(c => c.id !== id));
+  };
+
+  const clearAll = () => { setFiles([]); setConvertedItems([]); setFileStatuses({}); };
+
+  async function convertToHeicOut(file, canvasW, canvasH) {
+    const blob = await heic2any({ blob: file, toType: 'image/png', quality: 1 });
+    return new Promise((res, rej) => {
+      const img = new Image();
+      const url = URL.createObjectURL(blob);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const canvas = document.createElement('canvas');
+        canvas.width = canvasW || img.width;
+        canvas.height = canvasH || img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        res({ dataURL: canvas.toDataURL('image/png', quality/100), w: canvas.width, h: canvas.height });
+      };
+      img.onerror = rej;
+      img.src = url;
+    });
+  }
+
+  async function convertSingleFile(fileItem, targetFmt, tw, th) {
+    const { file, ext } = fileItem;
+    const isHeic = /heic|heif/i.test(ext) || file.type === 'image/heic' || file.type === 'image/heif';
+    if (isHeic) {
+      if (!window.heic2any) throw new Error('HEIC library not loaded');
+      return convertToHeicOut(file, tw, th);
+    }
+    return new Promise((res, rej) => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const img = new Image();
+        img.onload = () => {
+          let cw = tw || img.width;
+          let ch = th || img.height;
+          if (maintainAspect) {
+            if (tw && !th) { ch = Math.round(img.height * (tw/img.width)); cw = tw; }
+            else if (!tw && th) { cw = Math.round(img.width * (th/img.height)); ch = th; }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = cw; canvas.height = ch;
+          const ctx = canvas.getContext('2d');
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          if (targetFmt === 'image/jpeg' || targetFmt === 'image/bmp') {
+            ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,cw,ch);
+          }
+          ctx.drawImage(img, 0, 0, cw, ch);
+          const q = (targetFmt === 'image/png') ? 1 : quality/100;
+          res({ dataURL: canvas.toDataURL(targetFmt, q), w: cw, h: ch });
+        };
+        img.onerror = rej;
+        img.src = ev.target.result;
+      };
+      reader.onerror = rej;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function convertAll() {
+    if (!files.length) return;
+    setIsConverting(true);
+    setConvertedItems([]);
+    setOverallProgress(0);
+    const statuses = {};
+    files.forEach(f => { statuses[f.id] = 'waiting'; });
+    setFileStatuses({...statuses});
+
+    const fmt = outputFormat === 'heic' ? 'image/png' : outputFormat;
+    const tw = parseInt(width) || 0;
+    const th = parseInt(height) || 0;
+    const ext = ALL_FORMATS_FLAT.find(f => f.value === outputFormat)?.ext || 'png';
+    const results = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      setFileStatuses(prev => ({...prev, [f.id]: 'processing'}));
+      try {
+        const { dataURL, w, h } = await convertSingleFile(f, fmt, tw, th);
+        const baseName = f.name.replace(/\.[^.]+$/, '');
+        results.push({ id: f.id, dataURL, name: `${baseName}.${ext}`, w, h, size: Math.round(dataURL.length * 0.75) });
+        setFileStatuses(prev => ({...prev, [f.id]: 'done'}));
+      } catch(e) {
+        setFileStatuses(prev => ({...prev, [f.id]: 'error'}));
+        results.push({ id: f.id, error: e.message, name: f.name });
+      }
+      setOverallProgress(Math.round(((i+1)/files.length)*100));
+    }
+    setConvertedItems(results);
+    setIsConverting(false);
+  }
+
+  function downloadOne(item) {
+    const a = document.createElement('a');
+    a.href = item.dataURL;
+    a.download = item.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
+  function downloadAll() {
+    convertedItems.filter(i => i.dataURL).forEach((item, idx) => {
+      setTimeout(() => downloadOne(item), idx * 350);
+    });
+  }
+
+  async function savePDF() {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation:'p', unit:'px' });
+    const pw = pdf.internal.pageSize.getWidth();
+    const ph = pdf.internal.pageSize.getHeight();
+    const done = convertedItems.filter(i => i.dataURL);
+    if (!done.length) return;
+    done.forEach((item, idx) => {
+      if (idx > 0) pdf.addPage();
+      const r = Math.min(pw/item.w, ph/item.h);
+      const iw = item.w*r, ih = item.h*r;
+      const x = (pw-iw)/2, y = (ph-ih)/2;
+      pdf.addImage(item.dataURL, 'PNG', x, y, iw, ih);
+    });
+    pdf.save('images_converted.pdf');
+  }
+
+  const hasDone = convertedItems.some(i => i.dataURL);
+
+  return (
+    <div className="min-h-screen bg-surface-900 text-white py-8 px-4">
+      <div className="max-w-4xl mx-auto">
+
+        {/* Header */}
+        <div className="text-center mb-10 animate-fade-in">
+          <div className="inline-flex items-center gap-2 bg-sky-500/10 border border-sky-500/20 rounded-full px-4 py-1.5 text-xs font-mono text-sky-400 mb-4 tracking-widest">
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 inline-block animate-pulse"></span>
+            BROWSER-ONLY · NO UPLOAD · FULLY PRIVATE
+          </div>
+          <h1 className="text-4xl md:text-5xl font-bold mb-2">
+            <span className="text-white">Image</span>
+            <span className="text-transparent bg-clip-text" style={{backgroundImage:'linear-gradient(135deg, #38bdf8, #22c55e)'}}>Converter</span>
+            <span className="text-slate-400 text-2xl ml-2 font-normal">Pro</span>
+          </h1>
+          <p className="text-slate-400 text-sm">Convert PNG, JPG, WebP, <span className="text-purple-400 font-semibold">HEIC/HEIF</span>, AVIF, GIF, BMP, TIFF & more — all in your browser</p>
+        </div>
+
+        {/* Drop Zone */}
+        <div
+          ref={dropRef}
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={onDrop}
+          className={`relative rounded-2xl border-2 border-dashed cursor-pointer transition-all duration-300 mb-6 p-10 text-center
+            ${isDragging ? 'border-green-400 drop-active' : 'border-sky-500/40 drop-glow hover:border-sky-400/70'}`}
+          style={{background:'rgba(14,165,233,0.03)'}}
+        >
+          <input ref={fileInputRef} type="file" multiple accept={ACCEPT_TYPES} className="hidden" onChange={e => handleFiles(e.target.files)} />
+          <div className={`transition-transform duration-300 ${isDragging ? 'scale-110' : ''}`}>
+            <div className="w-16 h-16 rounded-2xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-sky-400" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+              </svg>
+            </div>
+            <p className="text-slate-200 font-semibold text-lg mb-1">{isDragging ? 'Drop files here!' : 'Drop images or click to browse'}</p>
+            <p className="text-slate-500 text-sm">PNG · JPG · WebP · <span className="text-purple-400">HEIC/HEIF</span> · AVIF · GIF · BMP · TIFF · SVG · ICO</p>
+            <p className="text-slate-600 text-xs mt-2">Multiple files supported · No file size limit</p>
+          </div>
+          {isDragging && (
+            <div className="absolute inset-0 rounded-2xl border-2 border-green-400 pointer-events-none" style={{boxShadow:'inset 0 0 40px rgba(34,197,94,0.1)'}}></div>
+          )}
+        </div>
+
+        {/* File Queue */}
+        {files.length > 0 && (
+          <div className="rounded-2xl overflow-hidden mb-6 card-glow animate-slide-up" style={{background:'#0f172a'}}>
+            <div className="flex items-center justify-between px-5 py-3 border-b border-white/5">
+              <span className="text-sm font-semibold text-slate-300">{files.length} file{files.length>1?'s':''} queued</span>
+              <button onClick={clearAll} className="text-xs text-slate-500 hover:text-red-400 transition-colors font-mono">CLEAR ALL</button>
+            </div>
+            <div className="divide-y divide-white/5 max-h-64 overflow-y-auto">
+              {files.map(f => (
+                <div key={f.id} className="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] transition-colors group">
+                  <div className="w-12 h-12 rounded-lg overflow-hidden bg-surface-700 flex-shrink-0 border border-white/5">
+                    {f.preview
+                      ? <img src={f.preview} alt="" className="w-full h-full object-cover"/>
+                      : <div className="w-full h-full flex items-center justify-center">
+                          <FileIcon ext={f.ext}/>
+                        </div>
+                    }
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-slate-200 truncate font-medium">{f.name}</p>
+                    <p className="text-xs text-slate-500">{formatBytes(f.size)} · {f.ext.toUpperCase()}</p>
+                  </div>
+                  <StatusBadge status={fileStatuses[f.id] || 'idle'} />
+                  <button onClick={() => removeFile(f.id)} className="ml-2 text-slate-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Settings Panel */}
+        <div className="rounded-2xl overflow-hidden mb-6 card-glow" style={{background:'#0f172a'}}>
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/[0.02] transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
+              <span className="text-sm font-semibold text-slate-200">Conversion Settings</span>
+            </div>
+            <svg className={`w-4 h-4 text-slate-500 transition-transform ${showSettings ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"/></svg>
+          </button>
+
+          {showSettings && (
+            <div className="px-5 pb-5 border-t border-white/5 animate-slide-up">
+              {/* Output Format */}
+              <div className="mt-5">
+                <p className="text-xs font-semibold text-slate-500 mb-3 format-section-title tracking-widest">OUTPUT FORMAT</p>
+                {FORMAT_GROUPS.map(group => (
+                  <div key={group.label} className="mb-4">
+                    <p className="text-xs text-slate-600 mb-2">{group.label}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {group.formats.map(fmt => (
+                        <button
+                          key={fmt.value}
+                          onClick={() => setOutputFormat(fmt.value)}
+                          className={`format-chip px-3 py-2 rounded-xl text-xs font-semibold border transition-all
+                            ${outputFormat === fmt.value
+                              ? 'bg-sky-500/20 border-sky-500/60 text-sky-300 shadow-lg'
+                              : 'bg-white/[0.03] border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-300'
+                            }`}
+                        >
+                          <span className="block font-bold">{fmt.label}</span>
+                          <span className="block text-[10px] opacity-70 font-normal">{fmt.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Dimensions */}
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-slate-500 mb-1.5 block tracking-widest font-semibold">WIDTH (px)</label>
+                  <input
+                    type="number" placeholder="Auto"
+                    value={width} onChange={e => setWidth(e.target.value)}
+                    className="w-full bg-surface-700 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/20 transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 mb-1.5 block tracking-widest font-semibold">HEIGHT (px)</label>
+                  <input
+                    type="number" placeholder="Auto"
+                    value={height} onChange={e => setHeight(e.target.value)}
+                    className="w-full bg-surface-700 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/20 transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* Maintain Aspect */}
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  onClick={() => setMaintainAspect(!maintainAspect)}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${maintainAspect ? 'bg-sky-500' : 'bg-slate-700'}`}
+                >
+                  <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${maintainAspect ? 'translate-x-5' : 'translate-x-1'}`}/>
+                </button>
+                <span className="text-xs text-slate-400">Maintain aspect ratio</span>
+              </div>
+
+              {/* Quality Slider */}
+              {outputFormat !== 'image/png' && outputFormat !== 'image/gif' && outputFormat !== 'image/bmp' && (
+                <div className="mt-5">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs text-slate-500 tracking-widest font-semibold">QUALITY</label>
+                    <span className="text-xs font-mono text-sky-400 font-semibold">{quality}%</span>
+                  </div>
+                  <input
+                    type="range" min="10" max="100" value={quality}
+                    onChange={e => setQuality(parseInt(e.target.value))}
+                    className="w-full"
+                    style={{accentColor:'#0ea5e9'}}
+                  />
+                  <div className="flex justify-between text-[10px] text-slate-600 mt-1">
+                    <span>Small file</span><span>Best quality</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex flex-wrap gap-3 justify-center mb-6">
+          <button
+            onClick={convertAll}
+            disabled={isConverting || !files.length}
+            className="btn-primary text-white font-bold px-8 py-3.5 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none flex items-center gap-2 text-sm"
+          >
+            {isConverting ? (
+              <>
+                <svg className="spinner w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" strokeOpacity="0.2"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+                Converting {overallProgress}%
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                Convert {files.length > 0 ? `${files.length} File${files.length>1?'s':''}` : 'Images'}
+              </>
+            )}
+          </button>
+
+          {hasDone && (
+            <>
+              <button
+                onClick={downloadAll}
+                className="flex items-center gap-2 px-6 py-3.5 rounded-xl text-sm font-bold bg-green-500/15 border border-green-500/30 text-green-400 hover:bg-green-500/25 transition-all"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                Download All
+              </button>
+              <button
+                onClick={savePDF}
+                className="flex items-center gap-2 px-6 py-3.5 rounded-xl text-sm font-bold bg-red-500/15 border border-red-500/30 text-red-400 hover:bg-red-500/25 transition-all"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                Save as PDF
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Progress Bar */}
+        {isConverting && (
+          <div className="mb-6 animate-fade-in">
+            <div className="h-1.5 bg-surface-600 rounded-full overflow-hidden">
+              <div className="h-full progress-bar rounded-full transition-all duration-500" style={{width:`${overallProgress}%`}}></div>
+            </div>
+            <p className="text-center text-xs text-slate-500 mt-2 font-mono">Processing {overallProgress}% complete</p>
+          </div>
+        )}
+
+        {/* Results Grid */}
+        {convertedItems.length > 0 && (
+          <div className="animate-slide-up">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-slate-400 tracking-widest">CONVERTED FILES</h2>
+              <span className="text-xs font-mono text-green-400">{convertedItems.filter(i=>i.dataURL).length} / {convertedItems.length} SUCCESS</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+              {convertedItems.map(item => (
+                <div key={item.id} className="img-card rounded-2xl overflow-hidden border border-white/5" style={{background:'#0f172a'}}>
+                  {item.dataURL ? (
+                    <>
+                      <div className="relative aspect-square bg-surface-700">
+                        <img src={item.dataURL} alt={item.name} className="w-full h-full object-cover"/>
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 hover:opacity-100 transition-opacity flex items-end justify-center pb-3">
+                          <button
+                            onClick={() => downloadOne(item)}
+                            className="bg-sky-500 text-white text-xs font-bold px-4 py-1.5 rounded-full hover:bg-sky-400 transition-colors"
+                          >
+                            Download
+                          </button>
+                        </div>
+                        <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm rounded-full px-2 py-0.5">
+                          <span className="text-[10px] font-mono text-sky-300">{item.w}×{item.h}</span>
+                        </div>
+                      </div>
+                      <div className="p-2.5">
+                        <p className="text-xs text-slate-300 truncate font-medium mb-0.5">{item.name}</p>
+                        <p className="text-[10px] text-slate-600 font-mono">{formatBytes(item.size)}</p>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="aspect-square flex flex-col items-center justify-center p-4 text-center">
+                      <svg className="w-8 h-8 text-red-400 mb-2" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
+                      <p className="text-xs text-red-400 font-semibold">Failed</p>
+                      <p className="text-[10px] text-slate-600 mt-1">{item.name}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {files.length === 0 && (
+          <div className="text-center py-8 text-slate-700">
+            <div className="grid grid-cols-3 md:grid-cols-5 gap-3 max-w-sm mx-auto mb-4">
+              {['png','jpg','webp','heic','avif'].map(fmt => (
+                <div key={fmt} className="rounded-xl bg-surface-800 border border-white/5 py-3 text-center">
+                  <p className="text-xs font-bold" style={{color:['#22c55e','#f59e0b','#0ea5e9','#a855f7','#ef4444'][['png','jpg','webp','heic','avif'].indexOf(fmt)]}}>{fmt.toUpperCase()}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-slate-600">Supports all major image formats including Apple HEIC/HEIF</p>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="text-center mt-10 pt-6 border-t border-white/5">
+          <p className="text-xs text-slate-700 font-mono">All processing happens locally in your browser · Zero data is uploaded</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
 </body>
 </html>
